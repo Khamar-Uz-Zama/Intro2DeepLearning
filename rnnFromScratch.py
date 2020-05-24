@@ -18,7 +18,8 @@ data = tf.data.TFRecordDataset("skp.tfrecords")
 # this maps a parser function that properly interprets the bytes over the dataset
 # (with fixed sequence length 200)
 # if you change the sequence length in preprocessing you also need to change it here
-data = data.map(lambda x: parse_seq(x, 200))
+sequenceLength = 200
+data = data.map(lambda x: parse_seq(x, sequenceLength))
 
 # a map from characters to indices
 vocab = pickle.load(open("skp_vocab", mode="rb"))
@@ -31,46 +32,49 @@ ind_to_ch = {ind: ch for (ch, ind) in vocab.items()}
 
 oneHotData = data.map(lambda z: tf.one_hot(indices = z, depth = vocab_size))
 
-# Input to hidden layer
-W_InpToHidden = tf.Variable(tf.random_uniform_initializer()(shape=[200,256]))
-b_InpToHidden = tf.Variable(tf.random_uniform_initializer()(shape=[200,1]))
 
-# hidden to hidden layer
-W_HiddenToHidden = tf.Variable(tf.random_uniform_initializer()(shape=[200,256]))
-# Temp
-O_HiddenToHidden = tf.Variable(tf.random_uniform_initializer()(shape=[256,128]))
+def initializer(hunits, vocab_size, sequenceLength):
+    trainVariables = {}
+    
+    # Input to hidden layer
+    trainVariables['W_InpToHidden'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,vocab_size]))
+    trainVariables['b_InpToHidden'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,1]))
+    
+    # hidden to hidden layer
+    trainVariables['W_HiddenToHidden'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,hunits]))
+    # Temp variable - remove later
+    trainVariables['t-1_HiddenToHidden'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,sequenceLength]))
+    
+    # hidden to output layer
+    trainVariables['W_HiddenToOutput'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,vocab_size]))
+    trainVariables['b_HiddenToOutput'] = tf.Variable(tf.random_uniform_initializer()(shape=[vocab_size,1]))
 
-# hidden to output layer
-W_HiddenToOutput = tf.Variable(tf.random_uniform_initializer()(shape=[128,68]))
-b_HiddenToOutput = tf.Variable(tf.random_uniform_initializer()(shape=[68]))
+    return trainVariables
 
 
+units = 256
+trainVariables = initializer(units, vocab_size, sequenceLength)
+batch_OneHot_data = oneHotData.batch(batch_size=128, drop_remainder=True)
 
-# Random input just to confirm
-batched_onehotencoded_data = oneHotData.batch(batch_size=128, drop_remainder=True)
-tempData = batched_onehotencoded_data.batch(1)
-#
-a = tf.matmul(W_InpToHidden,tempData) + b_InpToHidden + tf.matmul(W_HiddenToHidden,O_HiddenToHidden)
-opFromHidden = tf.nn.tanh(a)
+for key,value in trainVariables.items():
+    print(key, '' , value.shape)
+    
+    
+n_time_steps = 100
+for time_step in range(n_time_steps):
+    train_batch = next(iter(batch_OneHot_data))
+    
+    ## FeedForward computations
+    for instance in train_batch:
+        # First node
+        op_InpToHidden = tf.matmul(trainVariables['W_InpToHidden'],tf.transpose(instance)) + trainVariables['b_InpToHidden']
+        op_HiddenToHidden = tf.matmul(trainVariables['W_HiddenToHidden'],trainVariables['t-1_HiddenToHidden'])
+        op_FromHidden = op_InpToHidden + op_HiddenToHidden
+        op_FromHidden = tf.nn.tanh(op_FromHidden)
+        
+        # Second node
+        op_FromOPLayer = tf.matmul(trainVariables['W_HiddenToOutput'],op_FromHidden) + trainVariables['b_HiddenToOutput']
+        y = tf.nn.softmax(logits = op_FromOPLayer)
 
-opFromOPLayer=tf.matmul(opFromHidden,W_HiddenToOutput) + b_HiddenToOutput
-y = tf.nn.softmax(tf.reshape(opFromOPLayer, shape = [68]))
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     
