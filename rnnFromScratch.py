@@ -9,8 +9,8 @@ from prepare_data import parse_seq
 import pickle
 import tensorflow as tf
 import numpy as np
-from tensorflow.compat.v1 import enable_eager_execution
-enable_eager_execution()
+
+
 
 # this is just a datasets of "bytes" (not understandable)
 data = tf.data.TFRecordDataset("skp.tfrecords")
@@ -27,55 +27,148 @@ vocab_size = len(vocab)
 # inverse mapping: indices to characters
 ind_to_ch = {ind: ch for (ch, ind) in vocab.items()}
 
-#print(vocab)
-#print(vocab_size)
-units = 256
-oneHotData = data.map(lambda char: tf.one_hot(indices = char, depth = vocab_size))
+print(vocab)
+print(vocab_size)
 
-batch_OneHot_data = oneHotData.batch(batch_size=128, drop_remainder=True)
+batch_size = 64
+batch_OneHot_data = data.shuffle(buffer_size = 10 * batch_size).batch(batch_size=batch_size, drop_remainder=True).repeat()
+batch_size = tf.convert_to_tensor(batch_size, dtype=None, dtype_hint=None, name=None)
+print(batch_size)
 
 def initializer(hunits, vocab_size, sequenceLength):
-    trainVariables = {}
+    
     
     # Input to hidden layer
-    trainVariables['W_InpToHidden'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,vocab_size]))
-    trainVariables['b_InpToHidden'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,1]))
+    W_InpToHidden = tf.Variable(tf.initializers.glorot_uniform()(shape=[vocab_size, hunits]))
+    b_InpToHidden = tf.Variable(tf.initializers.glorot_uniform()(shape=[hunits]))
     
     # hidden to hidden layer
-    trainVariables['W_HiddenToHidden'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,hunits]))
-    # Temp variable - remove later
-    trainVariables['t-1_HiddenToHidden'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,sequenceLength]))
+    W_HiddenToHidden = tf.Variable(tf.initializers.glorot_uniform()(shape=[hunits,hunits]))
+
     
     # hidden to output layer
-    trainVariables['W_HiddenToOutput'] = tf.Variable(tf.random_uniform_initializer()(shape=[hunits,vocab_size]))
-    trainVariables['b_HiddenToOutput'] = tf.Variable(tf.random_uniform_initializer()(shape=[vocab_size,1]))
-
+    W_HiddenToOutput = tf.Variable(tf.initializers.glorot_uniform()(shape=[hunits,vocab_size]))
+    b_HiddenToOutput = tf.Variable(tf.initializers.glorot_uniform()(shape=[vocab_size]))
+    
+    trainVariables = [W_InpToHidden, b_InpToHidden, W_HiddenToHidden, W_HiddenToOutput, b_HiddenToOutput]
     return trainVariables
 
-
+units = 256
 trainVariables = initializer(units, vocab_size, sequenceLength)
 
+for value in trainVariables:
+    print(value.shape)
 
-for key,value in trainVariables.items():
-    print(key, '' , value.shape)
+opt = tf.optimizers.Adam()
+loss_func= tf.losses.SparseCategoricalCrossentropy(from_logits=True)
+n_time_steps = 200
+
+#All operations were executed using tensorflow as python operations do not work under tensorflow
+
+# @tf.function
+def RNNCell(seq):
+  with tf.GradientTape() as tape:
+    state = tf.zeros([batch_size, units])
     
-    
-n_time_steps = 100
-train_batch = next(iter(batch_OneHot_data))
-for time_step in range(n_time_steps):
-    
-    test_batch = next(iter(batch_OneHot_data))
-    ## FeedForward computations
-    for instance,label in zip(train_batch,test_batch):
-        # First node
-        op_InpToHidden = tf.matmul(trainVariables['W_InpToHidden'],tf.transpose(instance)) + trainVariables['b_InpToHidden']
-        op_HiddenToHidden = tf.matmul(trainVariables['W_HiddenToHidden'],trainVariables['t-1_HiddenToHidden'])
+
+
+    for i in tf.range(n_time_steps-1):
+        inp = tf.one_hot(seq[:, i], vocab_size)
+        # # print("inp:  ", inp.shape)
+        op_InpToHidden = tf.matmul(inp, trainVariables[0])
+        # # print("op_InpToHidden :  ", op_InpToHidden.shape) 
+        op_HiddenToHidden = tf.matmul(state, trainVariables[2]) + trainVariables[1] 
+        # # print("op_HiddenToHidden :  ", op_HiddenToHidden.shape)
         op_FromHidden = op_InpToHidden + op_HiddenToHidden
-        op_FromHidden = tf.nn.tanh(op_FromHidden)
-        
+        # # print("op_FromHidden :  ", op_FromHidden.shape)
+        state = tf.nn.tanh(op_FromHidden)
+        # print("op_FromHidden :  ", op_FromHidden.shape)
+
+
         # Second node
-        op_FromOPLayer = tf.matmul(tf.transpose(trainVariables['W_HiddenToOutput']),op_FromHidden) + trainVariables['b_HiddenToOutput']
-        y = tf.nn.softmax(logits = op_FromOPLayer)
+        y = tf.matmul(state, trainVariables[3]) + trainVariables[4]
         
-        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels = label, logits = op_FromOPLayer))
-    train_batch = test_batch
+        # print(y)
+
+        labels = seqs[:, i+1]
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels, y)
+        loss = tf.reduce_mean(loss)
+
+
+
+    grads = tape.gradient(loss, trainVariables)
+
+    
+    opt.apply_gradients(zip(grads, trainVariables))
+
+    return loss
+
+steps = 100
+
+for step, seqs in enumerate(batch_OneHot_data):
+
+    loss = RNNCell(seqs)
+
+    if not step % 100:
+        print("Step: {} Loss: {} \n".format(step, loss))
+
+        
+
+    if step > steps:
+        break
+
+
+def generate(steps):
+    state = tf.zeros([1, units])
+    seq = [0]
+
+    for step in range(steps):
+
+        inp = tf.one_hot(seq[-1: ], vocab_size)
+        # print("inp:  ", inp.shape)
+        op_InpToHidden = tf.matmul(inp, trainVariables[0])
+        # print("op_InpToHidden :  ", op_InpToHidden.shape) 
+        op_HiddenToHidden = tf.matmul(state, trainVariables[2]) + trainVariables[1] 
+        # print("op_HiddenToHidden :  ", op_HiddenToHidden.shape)
+        op_FromHidden = op_InpToHidden + op_HiddenToHidden
+        # print("op_FromHidden :  ", op_FromHidden.shape)
+        state = tf.nn.tanh(op_FromHidden)
+        # print("op_FromHidden :  ", op_FromHidden.shape)
+
+
+        # Second node
+        op_FromOPLayer = tf.matmul(state, trainVariables[3]) + trainVariables[4]
+        y = tf.nn.softmax(op_FromOPLayer)
+        
+        y = y.numpy()[0]
+
+        
+
+        # seq.append(y)
+        seq.append(np.random.choice(vocab_size, p=y))
+
+        char = [ind_to_ch[ind] for ind in seq]
+    return "".join(char)
+        
+sentence = generate(2000)
+
+print(sentence)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""#Reference
+1. https://github.com/vzhou842/rnn-from-scratch
+2. http://www.wildml.com/2015/09/recurrent-neural-networks-tutorial-part-2-implementing-a-language-model-rnn-with-python-numpy-and-theano/
+3. https://www.analyticsvidhya.com/blog/2019/01/fundamentals-deep-learning-recurrent-neural-networks-scratch-python/
+"""
