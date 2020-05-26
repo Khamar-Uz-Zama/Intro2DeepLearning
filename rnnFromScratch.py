@@ -54,13 +54,12 @@ def initializer(hunits, vocab_size, sequenceLength):
     return trainVariables
 
 units = 256
-trainVariables = initializer(units, vocab_size, sequenceLength)
 
-for value in trainVariables:
-    print(value.shape)
 
 opt = tf.optimizers.Adam()
 loss_func= tf.losses.SparseCategoricalCrossentropy(from_logits=True)
+accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+
 n_time_steps = 200
 
 #All operations were executed using tensorflow as python operations do not work under tensorflow
@@ -68,7 +67,7 @@ n_time_steps = 200
 # @tf.function
 def RNNCell(seq):
   with tf.GradientTape() as tape:
-    state = tf.zeros([batch_size, units])
+    Hiddenstate = tf.zeros([batch_size, units])
     
 
 
@@ -77,51 +76,58 @@ def RNNCell(seq):
         # # print("inp:  ", inp.shape)
         op_InpToHidden = tf.matmul(inp, trainVariables[0])
         # # print("op_InpToHidden :  ", op_InpToHidden.shape) 
-        op_HiddenToHidden = tf.matmul(state, trainVariables[2]) + trainVariables[1] 
+        op_HiddenToHidden = tf.matmul(Hiddenstate, trainVariables[2]) + trainVariables[1] 
         # # print("op_HiddenToHidden :  ", op_HiddenToHidden.shape)
         op_FromHidden = op_InpToHidden + op_HiddenToHidden
         # # print("op_FromHidden :  ", op_FromHidden.shape)
-        state = tf.nn.tanh(op_FromHidden)
+        Hiddenstate = tf.nn.tanh(op_FromHidden)
         # print("op_FromHidden :  ", op_FromHidden.shape)
 
-
         # Second node
-        y = tf.matmul(state, trainVariables[3]) + trainVariables[4]
+        y = tf.matmul(Hiddenstate, trainVariables[3]) + trainVariables[4]
         
         # print(y)
 
-        labels = seqs[:, i+1]
+        labels = seq[:, i+1]
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels, y)
         loss = tf.reduce_mean(loss)
+        acc = accuracy(labels, y)
 
 
 
-    grads = tape.gradient(loss, trainVariables)
 
-    
+    grads = tape.gradient(loss, trainVariables)    
     opt.apply_gradients(zip(grads, trainVariables))
 
-    return loss
+    return loss, acc
 
-steps = 100
-
-for step, seqs in enumerate(batch_OneHot_data):
-
-    loss = RNNCell(seqs)
-
-    if not step % 100:
-        print("Step: {} Loss: {} \n".format(step, loss))
-
-        
-
-    if step > steps:
-        break
-
+def trainModel():
+    steps = 10000
+    
+    for step, seqs in enumerate(batch_OneHot_data):
+    
+        loss, acc= RNNCell(seqs)
+    
+        if not step % 100:
+            print("Step: {} Loss: {} Acc: {}\n".format(step, loss, acc))
+    
+        if step > steps:
+            break
+try:
+    with open('WandB.pickle', 'rb') as f:
+        trainVariables = pickle.load(f)
+except:        
+    trainVariables = initializer(units, vocab_size, sequenceLength)
+    trainModel()
+    
+    
+for value in trainVariables:
+    print(value.shape)
 
 def generate(steps):
     state = tf.zeros([1, units])
     seq = [0]
-
+    temp = []
     for step in range(steps):
 
         inp = tf.one_hot(seq[-1: ], vocab_size)
@@ -135,37 +141,36 @@ def generate(steps):
         state = tf.nn.tanh(op_FromHidden)
         # print("op_FromHidden :  ", op_FromHidden.shape)
 
-
         # Second node
         op_FromOPLayer = tf.matmul(state, trainVariables[3]) + trainVariables[4]
         y = tf.nn.softmax(op_FromOPLayer)
         
         y = y.numpy()[0]
 
-        
-
         # seq.append(y)
         seq.append(np.random.choice(vocab_size, p=y))
+        temp.append(np.argmax(y))
 
-        char = [ind_to_ch[ind] for ind in seq]
-    return "".join(char)
+    char = [ind_to_ch[ind] for ind in seq]
+    argMaxSentence = [ind_to_ch[ind] for ind in temp]
+    return "".join(char), argMaxSentence
         
-sentence = generate(2000)
+sentence, argMaxSentence = generate(2000)
 
 print(sentence)
+print('xxxxx')
+print("".join(argMaxSentence))
 
 
+import pickle
 
+filename = "WandB.pickle"
+with open(filename, 'wb') as f:
+   pickle.dump(trainVariables,f)
 
-
-
-
-
-
-
-
-
-
+    
+    
+    
 
 """#Reference
 1. https://github.com/vzhou842/rnn-from-scratch
