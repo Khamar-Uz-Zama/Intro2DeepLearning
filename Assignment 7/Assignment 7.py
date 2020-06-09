@@ -17,15 +17,15 @@ Hint: There might be a function to get the “top k” values of a tensor.
 """
 
 
-#twoDTensor = tf.constant([ [1, 2, 3],
-#                          [5, 4, 9] ],tf.int16)
-#maxTensor = tf.math.top_k(twoDTensor, k=1, sorted=True)
-#
-#print("Top K values")
-#maxTensor.values
-#
-#print("Indices of top K values")
-#maxTensor.indices
+twoDTensor = tf.constant([ [1, 2, 3],
+                          [5, 4, 9] ],tf.int16)
+maxTensor = tf.math.top_k(twoDTensor, k=1, sorted=True)
+
+print("Top K values")
+maxTensor.values
+
+print("Indices of top K values")
+maxTensor.indices
 
 
 """
@@ -54,13 +54,26 @@ Hint: You should look for a way to “scatter” a tensor of values into a diffe
 For two or more dimensions, you need to think carefully about the indices.
 """
 
+twoDTensor = tf.constant([ [1, 2, 3],
+                          [5, 40, 9] ],tf.int16)
+maxTensor = tf.math.top_k(twoDTensor, k=1, sorted=True)
 
+print("Top K values")
+maxTensor.values
 
+print("Indices of top K values")
+indices = maxTensor.indices.numpy()
+indices
+indices[1][0]
 
+zzz = tf.split(
+    twoDTensor, 2, axis=0, num=None, name='split'
+)
 
+update = tf.zeros(shape=[1,twoDTensor.shape[1]])
 
-
-
+for index, temp in enumerate(zzz):
+    tf.tensor_scatter_nd_update(temp, indices[index], update)
 
 """
 completed
@@ -196,8 +209,23 @@ is the ith element of the first tensor minus the jth element of the second tenso
 No loops! Hint: Tensorflow supports broadcasting much like numpy.
 """
 
-x = tf.random.uniform([6],minval=0, maxval=10, dtype=tf.dtypes.int32)
-y = tf.random.uniform([6],minval=0, maxval=10, dtype=tf.dtypes.int32)
+
+@tf.function
+def task9(x, y):
+  s = x.shape[0]
+  temp = tf.repeat(x, repeats=s, axis=0)
+
+  temp = tf.reshape(temp, [s,s])
+
+  xMinusy = tf.subtract(temp,y)
+
+  return xMinusy
+
+
+tensor1 = tf.random.uniform([3],minval=1, maxval=5, dtype=tf.dtypes.int32)
+tensor2 = tf.random.uniform([3],minval=1, maxval=5, dtype=tf.dtypes.int32)
+
+tf.print(task9(tensor1,tensor2))
 
 
 
