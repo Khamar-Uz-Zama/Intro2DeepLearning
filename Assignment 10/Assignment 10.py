@@ -6,14 +6,20 @@ Created on Mon Jun 29 23:45:49 2020
 """
 
 import tensorflow as tf
+import numpy as np
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
 
 import matplotlib.pyplot as plt
 image_index = 7777 # You may select anything up to 60,000
 print(y_train[image_index]) # The label is 8
-plt.imshow(x_train[image_index], cmap='Greys')
+#plt.imshow(x_train[image_index], cmap='Greys')
 
 x_train.shape
+
+
+
+test = x_test
+
 
 
 # Reshaping the array to 4-dims so that it can work with the Keras API
@@ -29,7 +35,6 @@ x_test /= 255
 print('x_train shape:', x_train.shape)
 print('Number of images in x_train', x_train.shape[0])
 print('Number of images in x_test', x_test.shape[0])
-
 
 # Importing the required Keras modules containing model and layers
 from keras.models import Sequential
@@ -49,3 +54,43 @@ model.compile(optimizer='adam',
 model.fit(x=x_train,y=y_train, epochs=10)
 
 model.evaluate(x_test, y_test)
+
+
+
+import random
+import cv2
+
+def sp_noise(image):
+    '''
+    Add salt and pepper noise to image
+    prob: Probability of the noise
+    '''
+    prob = 0.1
+    output = np.zeros(image.shape,np.uint8)
+    thres = 1 - prob 
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            rdn = random.random()
+            if rdn < prob:
+                output[i][j] = 0
+            elif rdn > thres:
+                output[i][j] = 255
+            else:
+                output[i][j] = image[i][j]
+    return output
+
+
+image = test[0]
+noise_img = sp_noise(image)
+plt.imshow(noise_img , cmap='Greys')
+
+noised = map(sp_noise, test)
+
+zz = list(noised)
+zz = np.array(zz)
+x_test_noised = zz.reshape(x_test.shape[0], 28, 28, 1)
+x_test_noised = x_test.astype('float32')
+x_test_noised /= 255
+
+
+model.evaluate(x_test_noised, y_test)
