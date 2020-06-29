@@ -203,7 +203,6 @@ tf.print(counter3)
 
 
 """
-incomplete
 Task 9: Given two 1D tensors of equal length n, create a tensor of shape (n, n) where element i,j 
 is the ith element of the first tensor minus the jth element of the second tensor.
 No loops! Hint: Tensorflow supports broadcasting much like numpy.
