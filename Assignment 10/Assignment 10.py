@@ -30,6 +30,7 @@ print('x_train shape:', x_train.shape)
 print('Number of images in x_train', x_train.shape[0])
 print('Number of images in x_test', x_test.shape[0])
 
+
 # Importing the required Keras modules containing model and layers
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Dropout, Flatten, MaxPooling2D
@@ -48,9 +49,3 @@ model.compile(optimizer='adam',
 model.fit(x=x_train,y=y_train, epochs=10)
 
 model.evaluate(x_test, y_test)
-
-
-image_index = 4444
-plt.imshow(x_test[image_index].reshape(28, 28),cmap='Greys')
-pred = model.predict(x_test[image_index].reshape(1, img_rows, img_cols, 1))
-print(pred.argmax())
